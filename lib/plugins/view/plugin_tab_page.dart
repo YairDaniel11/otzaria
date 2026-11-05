@@ -210,6 +210,7 @@ class _PluginTabPageState extends State<PluginTabPage> with PluginWebViewHost {
   bool _awaitingFirstBoot = true;
   final _loadGeneration = PluginLoadGeneration();
   bool _hasError = false;
+  String? _loadErrorDetails;
   String? _devErrorMessage;
 
   // כשל יצירה native לא מפעיל אף callback ב-Dart — נשאר רק מסך ריק.
@@ -523,7 +524,13 @@ class _PluginTabPageState extends State<PluginTabPage> with PluginWebViewHost {
     }
 
     if (_hasError) {
-      return Center(child: Text('שגיאה בטעינת הקובץ: $localHtmlPath'));
+      final details = _loadErrorDetails;
+      return Center(
+        child: Text(
+          'שגיאה בטעינת הקובץ: $localHtmlPath'
+          '${details == null ? '' : '\n$details'}',
+        ),
+      );
     }
 
     if (_entrypointMissing) {
@@ -840,6 +847,7 @@ class _PluginTabPageState extends State<PluginTabPage> with PluginWebViewHost {
             ),
           );
           debugPrint('Plugin [${widget.plugin.pluginId}] boot error: $e\n$st');
+          _loadErrorDetails = 'Boot failed: $e';
           PluginSystemDatabase.instance.writeLog(
             widget.plugin.pluginId,
             'ERROR',
@@ -865,9 +873,26 @@ class _PluginTabPageState extends State<PluginTabPage> with PluginWebViewHost {
             : 'renderer',
       ),
       onReceivedError: (controller, request, error) {
-        // only fail the view for the entrypoint file load itself
+        // only fail the view for the entrypoint file load itself.
+        // באנדרואיד ה-WebView מדווח onReceivedError גם על משאבי משנה
+        // (סקריפט/תמונה/פונט חסרים או חסומים) — כשל כזה לא מפיל את התוסף.
         if (request.url.scheme == 'file' ||
             request.url.scheme == pluginAssetScheme) {
+          if (request.isForMainFrame == false) {
+            debugPrint(
+              'Plugin [${widget.plugin.pluginId}] subresource load failed: '
+              '${request.url} (${error.type}: ${error.description})',
+            );
+            return;
+          }
+          _loadErrorDetails = '${error.type}: ${error.description}';
+          unawaited(
+            PluginSystemDatabase.instance.writeLog(
+              widget.plugin.pluginId,
+              'ERROR',
+              'Entrypoint load failed: ${request.url} — $_loadErrorDetails',
+            ),
+          );
           // שגיאת רשת/קובץ נתפסה ב-Dart — התהליך חי, לא קריסה native.
           // מנקים את ה-canary כדי שלא נחסום שגיאה רגילה כ"קריסה".
           unawaited(
