@@ -129,6 +129,9 @@ mixin PluginWebViewHost<T extends StatefulWidget> on State<T> {
   late final PluginBridgeWindowDependencies Function()
   _initialWindowDependencies;
   DateTime? _lastFileServerDenialLogAt;
+
+  /// הסיבה לכשל האחרון ברישום ה-WebView מול הגשר, להצגה במסך השגיאה.
+  String? lastAttachError;
   Future<PluginNetworkPolicy>? _networkPolicy;
   StreamSubscription<String?>? _networkPolicyChanges;
   List<ContentBlocker>? _contentBlockers;
@@ -538,6 +541,14 @@ mixin PluginWebViewHost<T extends StatefulWidget> on State<T> {
         instanceId: instanceId,
       );
       debugPrint('$logTag [${plugin.pluginId}] WebView init error: $e');
+      lastAttachError = 'WebView init failed: $e';
+      unawaited(
+        PluginSystemDatabase.instance.writeLog(
+          plugin.pluginId,
+          'ERROR',
+          lastAttachError!,
+        ),
+      );
       return false;
     }
   }

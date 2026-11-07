@@ -721,6 +721,7 @@ class _PluginTabPageState extends State<PluginTabPage> with PluginWebViewHost {
               owner: widget.instanceId,
             ),
           );
+          _loadErrorDetails = lastAttachError;
           if (mounted) setState(() => _hasError = true);
         }
       },
