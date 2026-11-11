@@ -1,0 +1,43 @@
+name: "Repack debug APK (encrypted, split)"
+
+# אורז מחדש ארטיפקט קיים כארכיון מוצפן ומפוצל, כדי שמסנן רשת לא ישנה אותו בדרך.
+# לא בונה, לא מפרסם ולא יוצר Release.
+on:
+  push:
+    branches: [ci/repack-apk]
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  repack:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download existing artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: otzaria-android-debug-x64.apk
+          run-id: "43114483724"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: dl
+
+      - name: Encrypt and split
+        run: |
+          set -e
+          ls -l dl
+          sha256sum dl/app-debug.apk | tee dl/sha256.txt
+          mkdir out
+          cd dl
+          zip -0 -P otzaria ../out/pack.zip app-debug.apk sha256.txt
+          cd ../out
+          split -b 20m -d pack.zip part.
+          rm pack.zip
+          ls -l
+
+      - name: Upload parts
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: apk-parts
+          path: out/part.*
+          compression-level: 0
