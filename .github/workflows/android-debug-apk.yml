@@ -3,6 +3,8 @@ name: "Android debug APK (x64, unsigned)"
 # בנייה לבדיקה בלבד: APK מסוג debug ל-x86_64 (אימולטור), בלי חתימה ובלי סודות.
 # לא יוצר Release, לא מפרסם ולא מכריז.
 on:
+  push:
+    branches: [ci/android-debug-apk]
   workflow_dispatch:
 
 permissions:
