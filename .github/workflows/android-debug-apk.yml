@@ -1,0 +1,93 @@
+name: "Android debug APK (x64, unsigned)"
+
+# בנייה לבדיקה בלבד: APK מסוג debug ל-x86_64 (אימולטור), בלי חתימה ובלי סודות.
+# לא יוצר Release, לא מפרסם ולא מכריז.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build_debug_apk:
+    runs-on: ubuntu-latest
+    env:
+      RUSTUP_HOME: ${{ github.workspace }}/.rustup
+      CARGO_HOME: ${{ github.workspace }}/.cargo
+    steps:
+      - name: Clone repository
+        uses: actions/checkout@v7.0.1
+
+      - name: Free up disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost "$AGENT_TOOLSDIRECTORY"
+          df -h
+
+      - name: Set up Java
+        uses: actions/setup-java@v6.0.1
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.47.7
+          cache: true
+
+      - name: Install Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Add cargo to PATH & Android Rust target
+        run: |
+          echo "$CARGO_HOME/bin" >> "$GITHUB_PATH"
+          rustup target add --toolchain stable x86_64-linux-android
+
+      - run: sudo apt install ninja-build
+
+      - name: Gradle performance flags
+        run: |
+          mkdir -p ~/.gradle
+          cat >> ~/.gradle/gradle.properties << 'EOF'
+          org.gradle.daemon=true
+          org.gradle.parallel=true
+          org.gradle.caching=true
+          org.gradle.jvmargs=-Xmx4g -Dfile.encoding=UTF-8
+          kotlin.incremental=true
+          EOF
+
+      - name: Ensure Android SDK Platform 36
+        run: |
+          set -e
+          if [ ! -d "${ANDROID_SDK_ROOT}/platforms/android-36" ]; then
+            ${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager --install "platforms;android-36"
+          fi
+          if [ ! -d "${ANDROID_SDK_ROOT}/build-tools/36.0.0" ]; then
+            ${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager --install "build-tools;36.0.0"
+          fi
+
+      - name: Download bundled plugins into Android assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash installer/download_bundled_plugins.sh android
+          if [ -d installer/bundled_plugins ]; then
+            cp installer/bundled_plugins/*.otzplugin assets/bundled_plugins/
+          fi
+
+      - name: Fetch biographies data
+        uses: ./.github/actions/fetch-biographies
+
+      - name: Build debug APK (x64)
+        run: |
+          flutter pub get --enforce-lockfile
+          dart run tool/generate_search_index.dart
+          dart run tool/generate_settings_l10n.dart
+          flutter build apk --debug --target-platform android-x64 "--dart-define=OTZARIA_BUILD_COMMIT=$(git rev-parse --short=12 HEAD)"
+
+      - name: Upload apk
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: otzaria-android-debug-x64.apk
+          path: build/app/outputs/flutter-apk/app-debug.apk
